@@ -272,3 +272,137 @@ SGI设计了双层级配置器:
 
    （2）内存的获取与释放。
 
+#### 11.STL 中 resize 和 reserve 的区别
+
+**参考回答**
+
+1. 首先必须弄清楚两个概念：
+
+   （1）capacity：该值在容器初始化时赋值，指的是**容器能够容纳的最大的元素的个数**。还不能通过下标等访问，因为此时容器中还没有创建任何对象。
+
+   （2）size：指的是此时**容器中实际的元素个数**。可以通过下标访问0-(size-1)范围内的对象。
+
+1. resize和reserve区别主要有以下几点：
+
+   （1）**resize既分配了空间，也创建了对象**；**reserve表示容器预留空间，但并不是真正的创建对象**，需要通过insert（）或push_back（）等创建对象。
+
+   （2）resize既修改capacity大小，也修改size大小；reserve只修改capacity大小，不修改size大小。
+
+   （3）两者的形参个数不一样。 **resize带两个参数**，一个表示容器大小，一个表示初始值（默认为0）；**reserve只带一个参数**，表示容器预留的大小。
+
+**答案解析**
+
+ **问题延伸：**
+
+ resize 和 reserve 既有差别，也有共同点。两个接口的**共同点**是**它们都保证了vector的空间大小(capacity)最少达到它的参数所指定的大小。**下面就他们的细节进行分析。
+
+ 为实现resize的语义，resize接口做了两个保证：
+
+ （1）保证区间[0, new_size)范围内数据有效，如果下标index在此区间内，vector[indext]是合法的；
+
+ （2）保证区间[0, new_size)范围以外数据无效，如果下标index在区间外，vector[indext]是非法的。
+
+ **reserve只是保证vector的空间大小(capacity)最少达到它的参数所指定的大小n。**在区间[0, n)范围内，如果下标是index，vector[index]这种访问有可能是合法的，也有可能是非法的，视具体情况而定。
+
+ 以下是两个接口的源代码：
+
+```c++
+void resize(size_type new_size)
+
+   { 
+           resize(new_size, T());
+   }
+  void resize(size_type new_size, const T& x)
+   {
+        if (new_size < size()) 
+            // erase区间范围以外的数据，确保区间以外的数据无效
+              erase(begin() + new_size, end()); 
+        else
+            // 填补区间范围内空缺的数据，确保区间内的数据有效
+              insert(end(), new_size - size(), x); 
+   }
+
+
+#include<iostream>
+#include<vector>
+using namespace std;
+int main()
+{
+    vector<int> a;
+    cout<<"initial capacity:"<<a.capacity()<<endl;
+    cout<<"initial size:"<<a.size()<<endl;
+
+    /*resize改变capacity和size*/
+    a.resize(20);
+    cout<<"resize capacity:"<<a.capacity()<<endl;
+    cout<<"resize size:"<<a.size()<<endl;
+
+
+    vector<int> b;
+     /*reserve改变capacity,不改变resize*/
+    b.reserve(100);
+    cout<<"reserve capacity:"<<b.capacity()<<endl;
+    cout<<"reserve size:"<<b.size()<<endl;
+return 0;
+}
+
+/*    运行结果：
+          initial capacity:0
+        initial size:0
+        resize capacity:20
+        resize size:20
+        reserve capacity:100
+        reserve size:0
+*/    
+```
+
+ **注意：**如果**n大于当前的vector的容量**(是容量，并非vector的size)，将会引起**自动内存分配**。所以**现有的pointer,references,iterators将会失效。**而内存的重新配置会很耗时间。
+
+#### 12.说说 STL 容器动态链接可能产生的问题？
+
+1. 可能产生 的问题
+
+    容器是一种动态分配内存空间的一个变量集合类型变量。在一般的程序函数里，局部容器，参数传递容器，参数传递容器的引用，参数传递容器指针都是可以正常运行的，而在动态链接库函数内部使用容器也是没有问题的，但是**给动态库函数传递容器的对象本身，则会出现内存堆栈破坏的问题。**
+
+2. 产生问题的原因
+   容器和动态链接库相互支持不够好，动态链接库函数中使用容器时，**参数中只能传递容器的引用，并且要保证容器的大小不能超出初始大小，否则导致容器自动重新分配，就会出现内存堆栈破坏问题。**
+
+#### 13. push_back 和 emplace_back 的区别
+
+**参考回答**
+
+ 如果要将一个临时变量push到容器的末尾，**push_back()需要先构造临时对象，再将这个对象拷贝到容器的末尾**，而**emplace_back()则直接在容器的末尾构造对象**，这样就**省去了拷贝和临时对象的析构过程。**
+
+ 参考代码：
+
+```c++
+#include <iostream>
+#include <cstring>
+#include <vector>
+using namespace std;
+
+class A {
+public:
+    A(int i){
+        str = to_string(i);
+        cout << "构造函数" << endl; 
+    }
+    ~A(){}
+    A(const A& other): str(other.str){
+        cout << "拷贝构造" << endl;
+    }
+
+public:
+    string str;
+};
+
+int main()
+{
+    vector<A> vec;
+    vec.reserve(10);
+    for(int i=0;i<10;i++){
+        vec.push_back(A(i)); //调用了10次构造函数和10次拷贝构造函数,
+//        vec.emplace_back(i);  //调用了10次构造函数一次拷贝构造函数都没有调用过
+    }
+```
+
